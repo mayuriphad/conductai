@@ -256,12 +256,8 @@ async def mcp_endpoint(
             # Best-effort: guard-mt-* member tokens have no AgentIdentity row,
             # legacy identities may have null tier. Matcher treats null as
             # "no match" for any tier-requiring rule.
-            try:
-                from app.core.auth import resolve_agent_identity_row
-                _ai = resolve_agent_identity_row(resolved_token, db)
-                _agent_risk_tier = getattr(_ai, "risk_tier", None) if _ai else None
-            except Exception:
-                _agent_risk_tier = None
+            from app.core.auth import caller_risk_tier
+            _agent_risk_tier = caller_risk_tier(resolved_token, db)
             _gctx = GuardCtx(
                 db=db, ws_uuid=ws_uuid, workspace_id=workspace_id,
                 resolved_token=resolved_token, clerk_user_id=clerk_user_id,

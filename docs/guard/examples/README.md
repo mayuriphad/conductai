@@ -6,7 +6,7 @@ Cedar rules can gate on the caller's `risk_tier` via `context.risk_tier == "tier
 
 ### Files
 
-- **`tier3-no-shell.json`** — sample Cedar policy that forbids Tier 3 identities. Importable via `POST /guard/registry/import-cedar`.
+- **`tier3-no-shell.json`** — sample Cedar policy that blocks shell (`bash`, `shell`) for Tier 3 identities only. Importable via `POST /guard/registry/import-cedar`.
 - **`verify_tier.sh`** — runnable end-to-end verification. Imports the rule, fires `guard_check` as the current identity, reports whether tier enforcement fired.
 
 ### Run it

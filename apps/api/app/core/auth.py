@@ -39,6 +39,7 @@ from app.core.auth_tokens import (  # noqa: F401  (re-exported)
     _has_workspace_membership,
     _resolve_agent_token,
     _trial_member,
+    caller_risk_tier,
     resolve_agent_identity_row,
     resolve_agent_token,
     token_is_expired,
