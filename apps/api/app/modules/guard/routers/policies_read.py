@@ -6,7 +6,7 @@ import hashlib
 import os
 import json
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.auth import (
@@ -137,8 +137,12 @@ def sync_policies(
     workspace_id: str = Query(...),
     db: Session = Depends(get_db),
     _auth: str = Depends(get_guard_hook_auth),
+    authorization: str | None = Header(None),
 ):
     """Return the current active ruleset for the hook binary or MCP server.
+
+    Tier-gated rules are resolved for the calling identity — a Tier 1 caller
+    never receives a ``risk_tier == "tier_3"`` rule.
 
     When the workspace has a signing key configured, the response includes a
     HMAC-SHA256 signature field. The canonical body used for signing is the
@@ -153,7 +157,10 @@ def sync_policies(
     gc = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     # ponytail: sync always uses surface="agent" — GuardConfig.persona is developer type, not surface
     active_rules = compute_policy(db, ws_uuid, "agent")
-    hook_rules = [rule for rule in active_rules if is_hook_applicable_rule(rule)]
+    from app.core.auth import caller_risk_tier
+    token = authorization.split(" ", 1)[1] if authorization and " " in authorization else None
+    tier = caller_risk_tier(token, db)
+    hook_rules = [rule for rule in active_rules if is_hook_applicable_rule(rule, caller_risk_tier=tier)]
     _audit_exception_transitions(db, ws_uuid, audit_use=True)
     version_hash = hashlib.sha256(json.dumps(hook_rules, sort_keys=True).encode()).hexdigest()[:16]
     version = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}-{version_hash}"

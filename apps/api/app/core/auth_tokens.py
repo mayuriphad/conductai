@@ -257,6 +257,21 @@ def resolve_agent_identity_row(token: str, db: Session):
     return None
 
 
+def caller_risk_tier(token: str | None, db: Session) -> str | None:
+    """risk_tier of the AgentIdentity behind ``token``; None when unknown.
+
+    Best-effort: guard-mt-* member tokens and Clerk JWTs have no AgentIdentity
+    row. Tier-gated rules treat None as "no match".
+    """
+    if not token:
+        return None
+    try:
+        ai = resolve_agent_identity_row(token, db)
+    except Exception:
+        return None
+    return getattr(ai, "risk_tier", None) if ai else None
+
+
 def token_is_expired(token: str, db: Session) -> bool:
     """True iff token matches a real AgentIdentity row whose expires_at has passed.
 

@@ -47,7 +47,7 @@ echo ""
 RULE_FILE="$(dirname "$0")/tier3-no-shell.json"
 
 # ─── 1. Import the tier-gate rule ────────────────────────────────────────────
-echo "▶ Importing Cedar rule (blocks any Tier 3 identity)…"
+echo "▶ Importing Cedar rule (blocks shell for Tier 3 identities)…"
 IMPORT_RESP=$(curl -sS -X POST "$API/guard/registry/import-cedar" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Workspace-ID: $WORKSPACE" \

@@ -625,10 +625,12 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
     # Persona is read from guard_config above (config.persona, defaults to 'standard').
     # compute_policy already filters to enabled packs per WorkspaceSkillPack — a rule
     # from a pack that is not installed will not appear here.
+    from app.core.auth import caller_risk_tier
     from app.modules.guard.enforcement import is_hook_applicable_rule
     from app.modules.guard.policy_engine import compute_policy
     persona = (config.persona or "agent")
     computed = compute_policy(db, config.workspace_id, persona)
+    tier = caller_risk_tier(agent_token, db)
     rules = [
         {
             "rule_id":           r.get("id") or r.get("rule_id"),
@@ -646,7 +648,7 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
             "source_pack":       r.get("source_pack") or r.get("_pack_slug"),
         }
         for r in computed
-        if is_hook_applicable_rule(r)
+        if is_hook_applicable_rule(r, caller_risk_tier=tier)
     ]
     policy = {"workspace_id": workspace_id, "version": "1", "rules": rules}
 

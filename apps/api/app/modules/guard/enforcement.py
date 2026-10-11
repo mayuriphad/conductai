@@ -17,19 +17,32 @@ class EnforcementMetadataError(ValueError):
     """Raised when a rule makes an invalid enforcement claim."""
 
 
-def is_hook_applicable_rule(rule: dict[str, Any]) -> bool:
-    """Return whether hook clients can preserve and evaluate this rule."""
-    if rule.get("match_mcp_server") is not None:
+# Conditions hook clients evaluate locally — the only match_* fields the
+# sync payload carries.
+HOOK_EVALUABLE_FIELDS = ("match_tool", "match_ai_tool", "match_pattern", "match_path_pattern")
+
+
+def is_hook_applicable_rule(rule: dict[str, Any], *, caller_risk_tier: str | None = None) -> bool:
+    """Return whether hook clients can preserve and evaluate this rule.
+
+    The hook only sees HOOK_EVALUABLE_FIELDS. Shipping a rule with any other
+    condition would drop that condition and widen the rule to every call — a
+    Cedar ``forbid when context.risk_tier == "tier_3"`` became "block every
+    tool for everyone". So:
+    - ``match_agent_risk_tier`` is resolved here, per caller: shipped only when
+      it equals ``caller_risk_tier`` (None never matches, same as the server).
+    - any other non-hook condition keeps the rule server-side (MCP / gateway).
+    """
+    required_tier = rule.get("match_agent_risk_tier")
+    if required_tier is not None and required_tier != caller_risk_tier:
         return False
-    return any(
-        rule.get(field) is not None
-        for field in (
-            "match_tool",
-            "match_ai_tool",
-            "match_pattern",
-            "match_path_pattern",
-        )
-    )
+    if any(
+        value is not None
+        for key, value in rule.items()
+        if key.startswith("match_") and key not in HOOK_EVALUABLE_FIELDS and key != "match_agent_risk_tier"
+    ):
+        return False
+    return any(rule.get(field) is not None for field in HOOK_EVALUABLE_FIELDS)
 
 
 def rule_personas(rule: dict[str, Any]) -> set[str]:
