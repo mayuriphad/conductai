@@ -23,7 +23,12 @@ def get_embed_model() -> "_ST":
     global _embed_model
     if _embed_model is None:
         from sentence_transformers import SentenceTransformer
-        _embed_model = SentenceTransformer(EMBED_MODEL)
+        try:
+            # Cached → no network. Otherwise the Hub is queried on every load and,
+            # when unreachable, retries with backoff long enough to stall startup.
+            _embed_model = SentenceTransformer(EMBED_MODEL, local_files_only=True)
+        except Exception:  # not cached yet — download once
+            _embed_model = SentenceTransformer(EMBED_MODEL)
     return _embed_model
 
 

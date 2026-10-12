@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1 — 2026-10-11
+
+- **Daemon starts offline.** The embedding model loads from the local cache first (`local_files_only`) and only contacts the Hugging Face Hub when it isn't cached. Before, an unreachable Hub meant retry backoff that outlasted `booster start`.
+- **`booster start` waits for the real outcome.** It waits up to 60s while the daemon process is alive (model warm-up takes 5-15s), and reports the daemon's exit code and log tail if it dies, instead of "unknown error" after 5s. Daemon output is unbuffered so the log isn't empty.
+- **Deep project paths work.** macOS caps Unix socket paths at 104 bytes; when `.booster/daemon.sock` would exceed it, the socket moves to a short per-repo path in the temp dir instead of failing with `AF_UNIX path too long`.
+
 ## 0.8.0 — 2026-10-10
 
 Language coverage release.

@@ -29,9 +29,23 @@ from booster.parsing import _SKIP_DIRS
 
 _DEBOUNCE_S = 2.0
 _SOCKET_NAME = "daemon.sock"
+_MAX_SOCK_PATH = 100  # macOS AF_UNIX limit is 104 bytes (Linux 108)
+
+
+def socket_path(root: Path) -> Path:
+    """`.booster/daemon.sock`, or a short per-repo path in the temp dir when the
+    project path is too deep for AF_UNIX (bind fails with 'path too long')."""
+    p = root / ".booster" / _SOCKET_NAME
+    if len(str(p).encode()) <= _MAX_SOCK_PATH:
+        return p
+    import hashlib
+    import tempfile
+    digest = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / f"booster-{digest}.sock"
 _PID_NAME = "daemon.pid"
 _HEARTBEAT_NAME = "heartbeat"
 _HEARTBEAT_TIMEOUT_S = 300  # exit if no MCP activity for 5 minutes
+_START_TIMEOUT_S = 60  # how long `booster start` waits for the daemon to listen
 
 
 def _recv_line(conn: socket.socket) -> bytes:
@@ -48,7 +62,7 @@ class BoosterDaemon:
     def __init__(self, root: Path) -> None:
         self.root = root
         self._booster_dir = root / ".booster"
-        self._sock_path = self._booster_dir / _SOCKET_NAME
+        self._sock_path = socket_path(root)
         self._pid_path = self._booster_dir / _PID_NAME
         self._pending: set[Path] = set()
         self._last_change = 0.0
@@ -218,7 +232,7 @@ class BoosterDaemon:
 
 def daemon_embed(texts: list[str], root: Path) -> "np.ndarray | None":
     """Send embed request to running daemon. Returns None if daemon unavailable."""
-    sock_path = root / ".booster" / _SOCKET_NAME
+    sock_path = socket_path(root)
     if not sock_path.exists():
         return None
     try:
@@ -239,7 +253,7 @@ def daemon_embed(texts: list[str], root: Path) -> "np.ndarray | None":
 
 def daemon_ping(root: Path) -> dict | None:
     """Ping the daemon. Returns status dict or None if not running."""
-    sock_path = root / ".booster" / _SOCKET_NAME
+    sock_path = socket_path(root)
     if not sock_path.exists():
         return None
     try:
@@ -263,21 +277,27 @@ def start_daemon(root: Path) -> "bool | str":
     booster_dir.mkdir(exist_ok=True)
     log_path = booster_dir / "daemon.log"
     log_file = open(log_path, "w")
-    subprocess.Popen(
+    proc = subprocess.Popen(
         [sys.executable, "-m", "booster.daemon", str(root)],
         start_new_session=True,
         stdout=log_file,
         stderr=log_file,
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},  # crash output reaches the log
     )
-    # Wait up to 5s for it to be ready
-    for _ in range(20):
-        time.sleep(0.25)
-        if daemon_ping(root) is not None:
-            log_file.close()
-            return True
-    log_file.close()
-    tail = log_path.read_text().strip()[-800:] if log_path.exists() else ""
-    return tail or "unknown error"
+    # Model warm-up (torch import + load) takes 5-15s; wait while the child lives.
+    deadline = time.monotonic() + _START_TIMEOUT_S
+    try:
+        while time.monotonic() < deadline:
+            if daemon_ping(root) is not None:
+                return True
+            if proc.poll() is not None:
+                tail = log_path.read_text().strip()[-800:] if log_path.exists() else ""
+                return tail or f"daemon exited with code {proc.returncode}"
+            time.sleep(0.25)
+    finally:
+        log_file.close()
+    # ponytail: still alive but not listening yet — slow first load; it'll come up.
+    return True
 
 
 def stop_daemon(root: Path) -> bool:
