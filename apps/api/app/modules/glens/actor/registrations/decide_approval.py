@@ -116,6 +116,23 @@ def _execute_decide_approval(ctx: ActionCtx, resolved: dict[str, Any]) -> dict[s
     if not row:
         raise ValueError(f"approval {aid} not found at execute time")
 
+    from app.modules.glens.actor.helpers import decide_actor_row, is_actor_row
+    if is_actor_row(row):
+        out = decide_actor_row(
+            ctx.db, row, decision=resolved["decision"], workspace_id=ctx.workspace_id,
+            clerk_user_id=ctx.clerk_user_id, user_email=ctx.user_email,
+            role="admin", reason=resolved.get("reason"),  # caller hit /confirm with platform.approvals.decide
+        )
+        ctx.db.refresh(row)
+        return {
+            "approval_request_id": str(row.id),
+            "decision": row.status,
+            "decided_at": row.decided_at.isoformat() if row.decided_at else None,
+            "latency_ms": row.latency_ms,
+            "run_resumed": None,
+            "executed": out.get("executed", False),
+        }
+
     # Re-check can_decide with the real role from the request context.
     ok, deny_reason = can_decide(
         row,

@@ -96,6 +96,12 @@ def _handle_guard_slack_decision(
 
         approver = payload.get("user", {}).get("name", "slack-user")
         row = sweep_if_timed_out(db, row)
+        from app.modules.glens.actor.helpers import is_actor_row
+        if is_actor_row(row):
+            # Actor actions (e.g. identity kill switch) need a Conduct identity
+            # + can_decide; a Slack click has neither. Not posted to Slack today.
+            log.warning("slack.actor_action_refused", request_id=str(row.id), approver=approver)
+            return {"ok": True}
         if row.status == "pending":
             row = apply_decision(
                 db, row,
