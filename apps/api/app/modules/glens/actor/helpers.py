@@ -457,3 +457,37 @@ def _persist_run_started_envelope(db: Session, row, result: Any) -> None:
         db.commit()
     except Exception:
         db.rollback()
+
+
+def is_actor_row(row: GuardApprovalRequest) -> bool:
+    """True for rows created by require_confirmation (Lens / MCP actor proposals)."""
+    return (getattr(row, "rule_id", None) or "").startswith(f"{LENS_ACTOR_RULE_ID_PREFIX}.")
+
+
+def decide_actor_row(
+    db: Session,
+    row: GuardApprovalRequest,
+    *,
+    decision: str,
+    workspace_id: str,
+    clerk_user_id: str | None,
+    user_email: str | None,
+    role: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """Decide an actor row the way its own Confirm/Cancel buttons do.
+
+    Generic approval surfaces (Guard Approvals inbox, Lens decide_approval)
+    used to call apply_decision directly: the row flipped to "approved" but
+    spec.execute never ran, and dispatch_confirm then refused it as
+    "action is approved" — approved, never executed, unrecoverable.
+    """
+    if decision == "approved":
+        return dispatch_confirm(
+            db, action_id=str(row.id), workspace_id=workspace_id,
+            clerk_user_id=clerk_user_id, user_email=user_email, role=role,
+        )
+    return dispatch_cancel(
+        db, action_id=str(row.id), workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id, user_email=user_email, reason=reason,
+    )

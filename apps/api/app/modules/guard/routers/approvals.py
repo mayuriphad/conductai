@@ -402,6 +402,19 @@ def decide_approval(
 
     decider_email = get_clerk_user_email(user_id) if user_id else None
 
+    from app.modules.glens.actor.helpers import ConfirmError, decide_actor_row, is_actor_row
+    if is_actor_row(row):
+        # Lens/MCP actor proposal: approving must run the action, not just flip status.
+        try:
+            decide_actor_row(
+                db, row, decision=body.decision, workspace_id=workspace_id,
+                clerk_user_id=user_id, user_email=decider_email, role=role, reason=body.reason,
+            )
+        except ConfirmError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.detail)
+        db.refresh(row)
+        return DecisionOut(request=_serialize(row), run_resumed=None)
+
     ok, reason = can_decide(
         row,
         decider_email=decider_email,
