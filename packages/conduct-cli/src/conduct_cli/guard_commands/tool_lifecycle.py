@@ -176,6 +176,15 @@ def managed_mcp(entry):
         entry.get("command") in {"conduct-mcp", "conductguard-mcp"})
 
 
+def _drop_shadowing(servers, endpoint):
+    """Delete managed entries from a narrower scope: Claude Code prefers project/local over user
+    scope, so a stale copy of the credential shadows the one `guard sync` keeps fresh."""
+    stale = [key for key in (CONDUCT_MCP_KEY, *LEGACY_MCP_KEYS) if ours_mcp(servers.get(key), endpoint)]
+    for key in stale:
+        del servers[key]
+    return bool(stale)
+
+
 def configure_mcp(tool, config, remove=False, project=None):
     selected = resolve(config)
     token = config.get("agent_token", "")
@@ -200,6 +209,14 @@ def configure_mcp(tool, config, remove=False, project=None):
                 elif prior is not None and key in LEGACY_MCP_KEYS and not remove and CONDUCT_MCP_KEY not in servers:
                     servers[CONDUCT_MCP_KEY] = servers.pop(key)  # rename; ownership checks below still apply
                     changed = True
+            if not remove and source.scope == "project":
+                changed |= _drop_shadowing(servers, selected.mcp)
+            if not remove and source.scope == "user" and tool == "claude-code":
+                projects = document.get("projects")
+                for scoped in (projects.values() if isinstance(projects, dict) else ()):
+                    local = scoped.get("mcpServers") if isinstance(scoped, dict) else None
+                    if isinstance(local, dict):
+                        changed |= _drop_shadowing(local, selected.mcp)
             if not remove and source.scope == "user":
                 key = CONDUCT_MCP_KEY
                 entry = {"type": "http", "url": selected.mcp, "headers": {"Authorization": f"Bearer {token}"}} if tool == "copilot-cli" else {
