@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.14.20] - 2026-10-13
+
+### Fixed
+- `conduct guard sync` removes stale Conduct-managed MCP entries from project
+  `.mcp.json` (with `--project`) and from Claude Code's per-project entries in
+  `~/.claude.json`. Claude Code prefers those scopes over the user-level entry,
+  so an old `cond_agt_` header kept returning 401 after login or sync
+  refreshed the user entry (#2459). Custom entries are left unchanged.
+
 ## [0.14.19] - 2026-10-06
 
 ### Changed
