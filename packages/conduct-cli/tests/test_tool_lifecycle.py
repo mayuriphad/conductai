@@ -161,3 +161,20 @@ def test_copilot_legacy_conduct_guard_key_is_renamed(local):
         servers = document[user.key]
         assert set(servers) == {"conduct", "third-party"}
         assert servers["conduct"]["headers"]["Authorization"] == "Bearer " + local["agent_token"]
+
+
+def test_claude_code_stale_project_and_local_entries_are_dropped(local, tmp_path):
+    stale = {"type": "http", "url": "https://api.test.invalid/mcp", "headers": {"Authorization": "Bearer cond_agt_stale"}}
+    custom = {"type": "http", "url": "https://elsewhere.test.invalid/mcp", "headers": {"Authorization": "Bearer user-token"}}
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"conduct": stale, "other": custom}}))
+    user = tmp_path / ".claude.json"
+    user.write_text(json.dumps({"projects": {str(project): {"mcpServers": {"conduct": stale, "other": custom}}}}))
+    ADAPTERS["claude-code"].root().mkdir()
+    assert lifecycle.configure_mcp("claude-code", local, project=str(project))
+    assert json.loads((project / ".mcp.json").read_text())["mcpServers"] == {"other": custom}
+    document = json.loads(user.read_text())
+    assert document["projects"][str(project)]["mcpServers"] == {"other": custom}
+    assert document["mcpServers"]["conduct"]["args"][-1] == "Authorization: Bearer cond_agt_fixture_only"
+    assert not lifecycle.configure_mcp("claude-code", local, project=str(project))
